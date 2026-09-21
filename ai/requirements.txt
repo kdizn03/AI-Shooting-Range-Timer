@@ -1,0 +1,14 @@
+torch
+torchaudio
+tensorflow
+numpy
+scipy
+librosa
+scikit-learn
+matplotlib
+seaborn
+soundfile
+onnx
+onnx-tf
+tqdm
+pandas
