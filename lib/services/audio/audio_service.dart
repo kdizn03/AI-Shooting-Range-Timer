@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import '../../models/microphone.dart';
+
 /// Abstract interface for microphone audio acquisition.
 ///
 /// Implementations handle platform-specific microphone access,
@@ -11,6 +13,10 @@ import 'dart:typed_data';
 abstract class AudioService {
   /// Whether the microphone is currently streaming audio.
   bool get isRecording;
+
+  /// The input actually in use since the last [startRecording], or null
+  /// before recording starts.
+  MicRoute? get route;
 
   /// Stream of raw PCM audio data chunks.
   ///

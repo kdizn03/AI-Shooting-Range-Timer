@@ -23,6 +23,13 @@ class TFLiteAudioClassifier implements AudioClassifier {
   bool get isReady => _isReady;
 
   @override
+  String get engineLabel => !_isReady
+      ? 'Not loaded'
+      : _useFallback
+          ? 'Energy heuristic (model not bundled)'
+          : 'TFLite model';
+
+  @override
   Future<void> loadModel() async {
     try {
       _interpreter =

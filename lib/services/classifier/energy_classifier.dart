@@ -18,6 +18,9 @@ class EnergyClassifier implements AudioClassifier {
   bool get isReady => _isReady;
 
   @override
+  String get engineLabel => 'Energy heuristic';
+
+  @override
   Future<void> loadModel() async {
     _isReady = true;
   }

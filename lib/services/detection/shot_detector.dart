@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../../models/detection_zone.dart';
 import '../../models/shot_event.dart';
 import '../classifier/audio_classification.dart';
 import 'detection_config.dart';
@@ -21,6 +22,19 @@ class ShotDetector {
   final DetectionConfig _config;
   final StreamController<ShotEvent> _shotController =
       StreamController<ShotEvent>.broadcast();
+  final StreamController<ZoneDecision> _zoneController =
+      StreamController<ZoneDecision>.broadcast();
+  int _zoneRejected = 0;
+  int _zoneUncertain = 0;
+
+  /// Every Detection Zone decision, for status displays.
+  Stream<ZoneDecision> get zoneDecisions => _zoneController.stream;
+
+  /// Sounds the Detection Zone filtered out this session.
+  int get zoneRejectedCount => _zoneRejected;
+
+  /// Events recorded as uncertain this session.
+  int get zoneUncertainCount => _zoneUncertain;
 
   int _shotCount = 0;
   DateTime? _lastShotTime;
@@ -49,13 +63,44 @@ class ShotDetector {
   void start(DateTime sessionStartTime) {
     _sessionStartTime = sessionStartTime;
     _shotCount = 0;
+    _zoneRejected = 0;
+    _zoneUncertain = 0;
     _lastShotTime = null;
+    _pausedAt = null;
+    _totalPaused = Duration.zero;
     _isActive = true;
   }
 
   /// Stops the detector.
   void stop() {
     _isActive = false;
+  }
+
+  DateTime? _pausedAt;
+  Duration _totalPaused = Duration.zero;
+
+  /// Whether detection is currently paused.
+  bool get isPaused => _pausedAt != null;
+
+  /// Total time spent paused so far in this session.
+  Duration get totalPaused => _totalPaused;
+
+  /// Pauses detection. Classifications received while paused are ignored,
+  /// and the paused interval is excluded from subsequent elapsed times.
+  ///
+  /// [at] defaults to now; it is injectable for deterministic tests.
+  void pause([DateTime? at]) {
+    if (!_isActive || _pausedAt != null) return;
+    _pausedAt = at ?? DateTime.now();
+  }
+
+  /// Resumes detection after [pause].
+  void resume([DateTime? at]) {
+    final DateTime? pausedAt = _pausedAt;
+    if (pausedAt == null) return;
+    final Duration gap = (at ?? DateTime.now()).difference(pausedAt);
+    if (!gap.isNegative) _totalPaused += gap;
+    _pausedAt = null;
   }
 
   /// Processes an [AudioClassification] result.
@@ -67,6 +112,7 @@ class ShotDetector {
   /// classification was rejected.
   ShotEvent? processClassification(AudioClassification classification) {
     if (!_isActive || _sessionStartTime == null) return null;
+    if (_pausedAt != null) return null;
 
     // 1. Check if it's a gunshot with sufficient AI confidence.
     if (!classification.isGunshot) return null;
@@ -78,6 +124,22 @@ class ShotDetector {
     // 3. Check shot limit.
     if (_shotCount >= _config.maxShotsPerSession) return null;
 
+    // 3b. Detection Zone. Runs before debounce, so a rejected distant sound
+    // never locks out a nearby shot right after it.
+    ZoneDecision? zone;
+    if (_config.detectionZone == DetectionZone.nearField) {
+      zone = NearFieldPolicy.evaluate(ZoneFeatures(
+        peakDbFs: classification.peakDbFs,
+        backgroundDbFs: classification.backgroundDbFs,
+        directRatioDb: classification.directRatioDb,
+      ));
+      if (!_zoneController.isClosed) _zoneController.add(zone);
+      if (zone.verdict == ZoneVerdict.rejected) {
+        _zoneRejected++;
+        return null;
+      }
+    }
+
     // 4. Check debounce lockout.
     final DateTime now = classification.timestamp;
     if (_lastShotTime != null) {
@@ -86,7 +148,7 @@ class ShotDetector {
     }
 
     // 5. Compute elapsed time with latency compensation.
-    Duration elapsedTime = now.difference(_sessionStartTime!);
+    Duration elapsedTime = now.difference(_sessionStartTime!) - _totalPaused;
     elapsedTime -= _config.latencyCompensation;
     if (elapsedTime.isNegative) {
       elapsedTime = Duration.zero;
@@ -95,6 +157,8 @@ class ShotDetector {
     // 6. Create confirmed shot event with recorded decibels.
     _shotCount++;
     _lastShotTime = now;
+    final bool uncertain = zone?.verdict == ZoneVerdict.uncertain;
+    if (uncertain) _zoneUncertain++;
 
     final ShotEvent shot = ShotEvent(
       shotNumber: _shotCount,
@@ -102,6 +166,8 @@ class ShotDetector {
       confidence: classification.confidence,
       detectionTimestamp: now,
       peakDecibels: classification.estimatedDbSpl,
+      uncertain: uncertain,
+      zoneNote: zone?.reason,
     );
 
     _shotController.add(shot);
@@ -113,11 +179,14 @@ class ShotDetector {
     _shotCount = 0;
     _lastShotTime = null;
     _sessionStartTime = null;
+    _pausedAt = null;
+    _totalPaused = Duration.zero;
     _isActive = false;
   }
 
   /// Releases resources.
   void dispose() {
     _shotController.close();
+    _zoneController.close();
   }
 }

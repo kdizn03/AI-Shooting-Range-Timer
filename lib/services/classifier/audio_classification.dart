@@ -34,7 +34,24 @@ class AudioClassification extends Equatable {
     required this.timestamp,
     this.peakDbFs = 0.0,
     this.estimatedDbSpl = 160.0,
+    this.analyzed = true,
+    this.backgroundDbFs,
+    this.directRatioDb,
   });
+
+  /// A level-only reading for a window the classifier did not examine,
+  /// used when the classifier only runs on sounds that pass the gate.
+  /// [label] and [confidence] carry no meaning; check [analyzed].
+  const AudioClassification.levelOnly({
+    required this.timestamp,
+    required this.peakDbFs,
+    this.estimatedDbSpl = 160.0,
+    this.backgroundDbFs,
+  })  : label = AudioLabel.backgroundNoise,
+        confidence = 0,
+        scores = const {},
+        analyzed = false,
+        directRatioDb = null;
 
   /// The predicted class label with the highest score.
   final AudioLabel label;
@@ -44,11 +61,14 @@ class AudioClassification extends Equatable {
 
   /// Confidence scores for all categories.
   ///
-  /// Keys are [AudioLabel] values, values are scores (0.0–1.0)
-  /// that sum to approximately 1.0.
+  /// Keys are [AudioLabel] values, values are scores (0.0–1.0). For the
+  /// energy heuristic they sum to about 1.0; YAMNet scores are independent.
   final Map<AudioLabel, double> scores;
 
-  /// Wall-clock timestamp when classification was performed.
+  /// Wall-clock time the sound occurred.
+  ///
+  /// Set by the audio pipeline from the sample position of the window's peak,
+  /// so it does not depend on how long processing took.
   final DateTime timestamp;
 
   /// Peak amplitude of the audio frame in decibels relative to full scale (-90.0 to 0.0 dBFS).
@@ -56,6 +76,37 @@ class AudioClassification extends Equatable {
 
   /// Estimated acoustic Sound Pressure Level (dB SPL) calibrated for firearm acoustics.
   final double estimatedDbSpl;
+
+  /// Whether a classifier examined this audio. `false` for level-only
+  /// readings (see [AudioClassification.levelOnly]).
+  final bool analyzed;
+
+  /// Live background-noise estimate when this audio arrived (dBFS), if known.
+  final double? backgroundDbFs;
+
+  /// Direct-to-tail energy ratio around the peak (dB), if measurable.
+  /// See `directToTailRatioDb`.
+  final double? directRatioDb;
+
+  /// Returns a copy with the pipeline's timing and signal measurements.
+  AudioClassification withMeasurements({
+    required DateTime timestamp,
+    required double peakDbFs,
+    required double estimatedDbSpl,
+    double? backgroundDbFs,
+    double? directRatioDb,
+  }) =>
+      AudioClassification(
+        label: label,
+        confidence: confidence,
+        scores: scores,
+        timestamp: timestamp,
+        peakDbFs: peakDbFs,
+        estimatedDbSpl: estimatedDbSpl,
+        analyzed: analyzed,
+        backgroundDbFs: backgroundDbFs,
+        directRatioDb: directRatioDb,
+      );
 
   /// Whether this classification predicts a gunshot.
   bool get isGunshot => label == AudioLabel.gunshot;
@@ -74,6 +125,9 @@ class AudioClassification extends Equatable {
         timestamp,
         peakDbFs,
         estimatedDbSpl,
+        analyzed,
+        backgroundDbFs,
+        directRatioDb,
       ];
 
   @override

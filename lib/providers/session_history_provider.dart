@@ -59,3 +59,37 @@ final sessionHistoryProvider = FutureProvider<List<Session>>((ref) async {
   final repo = ref.watch(sessionRepositoryProvider);
   return repo.getAllSessions();
 });
+
+/// Mutations on stored sessions. Every write refreshes
+/// [sessionHistoryProvider] so all screens stay consistent.
+class SessionHistoryController {
+  SessionHistoryController(this._ref);
+
+  final Ref _ref;
+
+  SessionRepository get _repo => _ref.read(sessionRepositoryProvider);
+
+  void _refresh() => _ref.invalidate(sessionHistoryProvider);
+
+  /// Saves (inserts or replaces) [session].
+  Future<void> save(Session session) async {
+    await _repo.saveSession(session);
+    _refresh();
+  }
+
+  /// Deletes the session with [id].
+  Future<bool> delete(String id) async {
+    final bool deleted = await _repo.deleteSession(id);
+    _refresh();
+    return deleted;
+  }
+
+  /// Deletes every stored session.
+  Future<void> deleteAll() async {
+    await _repo.deleteAllSessions();
+    _refresh();
+  }
+}
+
+final sessionHistoryControllerProvider =
+    Provider<SessionHistoryController>(SessionHistoryController.new);

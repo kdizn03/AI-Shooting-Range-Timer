@@ -13,6 +13,10 @@ abstract class AudioClassifier {
   /// Whether the classifier model has been loaded and is ready.
   bool get isReady;
 
+  /// Human-readable name of the inference engine actually in use, shown in
+  /// audio status displays (e.g. "TFLite model", "Energy heuristic").
+  String get engineLabel;
+
   /// Loads the AI model from assets and prepares for inference.
   ///
   /// Must be called before [classify]. Throws [ModelLoadException]

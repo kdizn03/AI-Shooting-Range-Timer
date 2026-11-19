@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 import '../../core/constants.dart';
+import '../../models/detection_zone.dart';
 import '../../models/firearm_profile.dart';
 
 /// Configuration parameters for the shot detection engine.
@@ -18,6 +19,7 @@ class DetectionConfig extends Equatable {
         TimingConstants.estimatedInferenceLatencyMs,
     this.minPeakDbFs = -14.0,
     this.firearmProfile = FirearmProfile.glock19Unsuppressed,
+    this.detectionZone = DetectionZone.standard,
   });
 
   /// Minimum confidence score (0.0–1.0) required to confirm a gunshot.
@@ -46,6 +48,10 @@ class DetectionConfig extends Equatable {
   /// The active firearm profile.
   final FirearmProfile firearmProfile;
 
+  /// Extra filtering after the gate and threshold. Unsupported profiles
+  /// (directional) behave as [DetectionZone.standard].
+  final DetectionZone detectionZone;
+
   /// Duration representation of the debounce period.
   Duration get debounceDuration => Duration(milliseconds: debounceDurationMs);
 
@@ -61,6 +67,7 @@ class DetectionConfig extends Equatable {
     int? inferenceLatencyCompensationMs,
     double? minPeakDbFs,
     FirearmProfile? firearmProfile,
+    DetectionZone? detectionZone,
   }) {
     return DetectionConfig(
       confidenceThreshold: confidenceThreshold ?? this.confidenceThreshold,
@@ -71,6 +78,7 @@ class DetectionConfig extends Equatable {
               this.inferenceLatencyCompensationMs,
       minPeakDbFs: minPeakDbFs ?? this.minPeakDbFs,
       firearmProfile: firearmProfile ?? this.firearmProfile,
+      detectionZone: detectionZone ?? this.detectionZone,
     );
   }
 
@@ -82,5 +90,6 @@ class DetectionConfig extends Equatable {
         inferenceLatencyCompensationMs,
         minPeakDbFs,
         firearmProfile,
+        detectionZone,
       ];
 }

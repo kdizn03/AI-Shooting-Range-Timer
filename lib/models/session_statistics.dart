@@ -19,22 +19,32 @@ class SessionStatistics extends Equatable {
     this.firstShotTime,
     this.avgDecibels,
     this.maxDecibels,
+    this.averageConfidence,
+    this.rejectedShots = 0,
+    this.confirmedShots = 0,
   });
 
   /// Computes statistics from a [Session].
   ///
   /// The [Session] should be completed or at least have an [endTime].
   /// If the session has no shots, interval and decibel metrics will be `null`.
+  ///
+  /// Detections the user has rejected are excluded from every metric, and
+  /// [sessionDuration] excludes paused time.
   factory SessionStatistics.fromSession(Session session) {
-    final List<ShotEvent> shots = session.shots;
-    final Duration sessionDuration = session.duration;
+    final List<ShotEvent> shots = session.countedShots;
+    final Duration sessionDuration = session.activeDuration;
     final int totalShots = shots.length;
+    final int rejected = session.shots.length - totalShots;
+    final int confirmed =
+        shots.where((s) => s.reviewStatus == ReviewStatus.confirmed).length;
 
     if (totalShots == 0) {
       return SessionStatistics(
         totalShots: 0,
         sessionDuration: sessionDuration,
         intervals: const [],
+        rejectedShots: rejected,
       );
     }
 
@@ -76,6 +86,8 @@ class SessionStatistics extends Equatable {
       }
     }
     final double avgDb = totalDb / shots.length;
+    final double avgConfidence =
+        shots.fold<double>(0, (sum, s) => sum + s.confidence) / shots.length;
 
     return SessionStatistics(
       totalShots: totalShots,
@@ -87,6 +99,9 @@ class SessionStatistics extends Equatable {
       firstShotTime: firstShotTime,
       avgDecibels: avgDb,
       maxDecibels: maxDb,
+      averageConfidence: avgConfidence,
+      rejectedShots: rejected,
+      confirmedShots: confirmed,
     );
   }
 
@@ -127,6 +142,15 @@ class SessionStatistics extends Equatable {
   /// Highest sound pressure level recorded among all detected shots (dB SPL).
   final double? maxDecibels;
 
+  /// Mean classifier confidence across counted detections.
+  final double? averageConfidence;
+
+  /// Number of detections the user rejected (excluded from all metrics).
+  final int rejectedShots;
+
+  /// Number of counted detections the user explicitly confirmed.
+  final int confirmedShots;
+
   /// Whether this session has any shot data.
   bool get hasShots => totalShots > 0;
 
@@ -144,6 +168,9 @@ class SessionStatistics extends Equatable {
         firstShotTime,
         avgDecibels,
         maxDecibels,
+        averageConfidence,
+        rejectedShots,
+        confirmedShots,
       ];
 
   @override

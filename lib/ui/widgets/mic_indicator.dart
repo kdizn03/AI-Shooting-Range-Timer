@@ -1,48 +1,65 @@
 import 'package:flutter/material.dart';
 
+import '../theme/tokens.dart';
+
+/// Status dot with label. When [isActive], the dot pulses gently unless the
+/// platform requests reduced motion. The label always states the status,
+/// so meaning never depends on colour or animation.
 class MicIndicator extends StatefulWidget {
   final bool isActive;
   final String label;
 
+  /// Dot/label colour while active.
+  final Color color;
+
+  /// Label shown when inactive.
+  final String inactiveLabel;
+
   const MicIndicator({
     super.key,
     required this.isActive,
-    this.label = 'Listening...',
+    this.label = 'Listening',
+    this.color = AppColors.accent,
+    this.inactiveLabel = 'Inactive',
   });
 
   @override
   State<MicIndicator> createState() => _MicIndicatorState();
 }
 
-class _MicIndicatorState extends State<MicIndicator> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
+class _MicIndicatorState extends State<MicIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+    value: 1,
+  );
+
+  bool get _reduceMotion =>
+      MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+
+  void _sync() {
+    if (widget.isActive && !_reduceMotion) {
+      if (!_controller.isAnimating) {
+        _controller.repeat(reverse: true, min: 0.35, max: 1);
+      }
+    } else {
+      _controller
+        ..stop()
+        ..value = 1;
+    }
+  }
 
   @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-    _animation = Tween<double>(begin: 0.5, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
-
-    if (widget.isActive) {
-      _controller.repeat(reverse: true);
-    }
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
   }
 
   @override
   void didUpdateWidget(MicIndicator oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isActive && !oldWidget.isActive) {
-      _controller.repeat(reverse: true);
-    } else if (!widget.isActive && oldWidget.isActive) {
-      _controller.stop();
-      _controller.value = 0.5;
-    }
+    _sync();
   }
 
   @override
@@ -53,31 +70,29 @@ class _MicIndicatorState extends State<MicIndicator> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    final Color c = widget.isActive ? widget.color : AppColors.textMuted;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        AnimatedBuilder(
-          animation: _animation,
-          builder: (context, child) {
-            return Transform.scale(
-              scale: widget.isActive ? _animation.value : 1.0,
-              child: Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: widget.isActive ? Colors.redAccent : Colors.grey,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            );
-          },
+        RepaintBoundary(
+          child: FadeTransition(
+            opacity: _controller,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+            ),
+          ),
         ),
-        const SizedBox(width: 8),
-        Text(
-          widget.isActive ? widget.label : 'Inactive',
-          style: TextStyle(
-            color: widget.isActive ? Colors.redAccent : Colors.grey,
-            fontWeight: FontWeight.bold,
+        const SizedBox(width: AppSpace.sm),
+        Flexible(
+          child: Text(
+            widget.isActive ? widget.label : widget.inactiveLabel,
+            overflow: TextOverflow.ellipsis,
+            style: AppType.caption.copyWith(
+              color: c,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],

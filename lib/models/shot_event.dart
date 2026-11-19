@@ -1,5 +1,20 @@
 import 'package:equatable/equatable.dart';
 
+/// User review state of a detected event.
+///
+/// Detections are never assumed to be real shots: every event starts as
+/// [unreviewed] and the shooter may confirm or reject it after the session.
+enum ReviewStatus {
+  /// Detected by the system, not yet reviewed by the user.
+  unreviewed,
+
+  /// User confirmed the detection was a real shot.
+  confirmed,
+
+  /// User rejected the detection as a false positive.
+  rejected,
+}
+
 /// Represents a single detected gunshot event during a session.
 ///
 /// Each [ShotEvent] records when a gunshot was detected relative to
@@ -13,6 +28,9 @@ class ShotEvent extends Equatable {
     required this.confidence,
     required this.detectionTimestamp,
     this.peakDecibels = 160.0,
+    this.reviewStatus = ReviewStatus.unreviewed,
+    this.uncertain = false,
+    this.zoneNote,
   });
 
   /// The 1-indexed sequential shot number within the session.
@@ -36,6 +54,18 @@ class ShotEvent extends Equatable {
   /// while suppressed 9mm registers 134–140 dB.
   final double peakDecibels;
 
+  /// User review state for this detection.
+  final ReviewStatus reviewStatus;
+
+  /// The Detection Zone check could not decide; review this event.
+  final bool uncertain;
+
+  /// Why the Detection Zone check decided as it did, if it ran.
+  final String? zoneNote;
+
+  /// Whether the user rejected this detection as a false positive.
+  bool get isRejected => reviewStatus == ReviewStatus.rejected;
+
   /// The interval from the previous shot, if applicable.
   ///
   /// Returns `null` for the first shot in a session. This should be
@@ -52,6 +82,9 @@ class ShotEvent extends Equatable {
     double? confidence,
     DateTime? detectionTimestamp,
     double? peakDecibels,
+    ReviewStatus? reviewStatus,
+    bool? uncertain,
+    String? zoneNote,
   }) {
     return ShotEvent(
       shotNumber: shotNumber ?? this.shotNumber,
@@ -59,6 +92,9 @@ class ShotEvent extends Equatable {
       confidence: confidence ?? this.confidence,
       detectionTimestamp: detectionTimestamp ?? this.detectionTimestamp,
       peakDecibels: peakDecibels ?? this.peakDecibels,
+      reviewStatus: reviewStatus ?? this.reviewStatus,
+      uncertain: uncertain ?? this.uncertain,
+      zoneNote: zoneNote ?? this.zoneNote,
     );
   }
 
@@ -70,10 +106,16 @@ class ShotEvent extends Equatable {
       'confidence': confidence,
       'detectionTimestamp': detectionTimestamp.toIso8601String(),
       'peakDecibels': peakDecibels,
+      'reviewStatus': reviewStatus.name,
+      if (uncertain) 'uncertain': true,
+      if (zoneNote != null) 'zoneNote': zoneNote,
     };
   }
 
   /// Deserializes a [ShotEvent] from a JSON-compatible map.
+  ///
+  /// Records written before review support existed load as
+  /// [ReviewStatus.unreviewed].
   factory ShotEvent.fromMap(Map<String, dynamic> map) {
     return ShotEvent(
       shotNumber: map['shotNumber'] as int,
@@ -81,6 +123,12 @@ class ShotEvent extends Equatable {
       confidence: (map['confidence'] as num).toDouble(),
       detectionTimestamp: DateTime.parse(map['detectionTimestamp'] as String),
       peakDecibels: (map['peakDecibels'] as num?)?.toDouble() ?? 160.0,
+      reviewStatus: ReviewStatus.values.firstWhere(
+        (r) => r.name == map['reviewStatus'],
+        orElse: () => ReviewStatus.unreviewed,
+      ),
+      uncertain: map['uncertain'] == true,
+      zoneNote: map['zoneNote'] is String ? map['zoneNote'] as String : null,
     );
   }
 
@@ -91,11 +139,15 @@ class ShotEvent extends Equatable {
         confidence,
         detectionTimestamp,
         peakDecibels,
+        reviewStatus,
+        uncertain,
+        zoneNote,
       ];
 
   @override
   String toString() =>
       'ShotEvent(#$shotNumber, elapsed: ${elapsedTime.inMilliseconds}ms, '
       'dB: ${peakDecibels.toStringAsFixed(1)}, '
-      'confidence: ${confidence.toStringAsFixed(3)})';
+      'confidence: ${confidence.toStringAsFixed(3)}, '
+      'review: ${reviewStatus.name})';
 }

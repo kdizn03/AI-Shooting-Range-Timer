@@ -6,11 +6,31 @@ import 'package:record/record.dart';
 
 import '../../core/constants.dart';
 import '../../core/errors/failures.dart';
+import '../../models/microphone.dart';
 import 'audio_service.dart';
+import 'microphone_manager.dart';
 
 /// Implementation of [AudioService] using the `record` package.
+///
+/// Records from [selection] when it is connected. When it is not, the OS
+/// default input is used and [route] says so (`selectedMissing`), so
+/// callers can tell the user instead of pretending.
 class RecordAudioService implements AudioService {
+  /// Creates a service for [selection] (the OS default when omitted).
+  RecordAudioService({
+    this.selection = MicSelection.systemDefault,
+    MicrophoneManager? microphones,
+  }) : _microphones = microphones;
+
+  /// The input the user chose.
+  final MicSelection selection;
+
+  final MicrophoneManager? _microphones;
   final AudioRecorder _recorder = AudioRecorder();
+  MicRoute? _route;
+
+  @override
+  MicRoute? get route => _route;
   StreamController<Uint8List>? _audioStreamController;
   StreamSubscription<Uint8List>? _recordSubscription;
   bool _isRecording = false;
@@ -48,16 +68,21 @@ class RecordAudioService implements AudioService {
       throw const MicrophonePermissionDeniedException('Microphone permission denied.');
     }
 
+    final MicDevice? device = await _resolveDevice();
+
     try {
       _audioStreamController = StreamController<Uint8List>.broadcast();
-      
-      const recordConfig = RecordConfig(
+
+      final recordConfig = RecordConfig(
         encoder: AudioEncoder.pcm16bits,
         sampleRate: AudioConstants.sampleRate,
         numChannels: AudioConstants.channels,
         echoCancel: false,
         autoGain: false,
         noiseSuppress: false,
+        device: device == null
+            ? null
+            : InputDevice(id: device.id, label: device.label),
       );
 
       final stream = await _recorder.startStream(recordConfig);
@@ -77,6 +102,29 @@ class RecordAudioService implements AudioService {
     } catch (e) {
       throw MicrophoneUnavailableException('Failed to start microphone recording: $e');
     }
+  }
+
+  /// Finds [selection] among the connected inputs and records the route.
+  Future<MicDevice?> _resolveDevice() async {
+    if (selection.isSystemDefault) {
+      _route = MicRoute(selection: selection);
+      return null;
+    }
+    List<MicDevice> devices = const [];
+    try {
+      final MicrophoneManager m =
+          _microphones ?? MicrophoneManager(lister: _recorder.listInputDevices);
+      devices = await m.listInputs();
+    } catch (e) {
+      debugPrint('Could not list audio inputs: $e');
+    }
+    final MicDevice? device = selection.resolve(devices);
+    _route = MicRoute(
+      selection: selection,
+      device: device,
+      selectedMissing: device == null,
+    );
+    return device;
   }
 
   @override

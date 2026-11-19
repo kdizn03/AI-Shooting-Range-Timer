@@ -34,6 +34,9 @@ class MockClassifier implements AudioClassifier {
   bool get isReady => _isReady;
 
   @override
+  String get engineLabel => 'Mock classifier';
+
+  @override
   Future<void> loadModel() async {
     // Simulate model loading time.
     await Future<void>.delayed(const Duration(milliseconds: 500));
